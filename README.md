@@ -41,7 +41,6 @@ ResearchGenie/
 └── docker-compose.yml
 ```
 
-## Getting Started
 
 ### Prerequisites
 
@@ -50,22 +49,14 @@ ResearchGenie/
 - PostgreSQL 14+ (or use the provided `docker-compose.yml`)
 - A free [Groq API key](https://console.groq.com)
 
-### 1. Backend
+## 🚀 First Time Setup
 
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-cp .env.example .env          # then fill in DATABASE_URL, SECRET_KEY, GROQ_API_KEY
-
-uvicorn app.main:app --reload --port 8000
+docker compose up --build -d
+docker stop researchgenie_frontend
 ```
 
-The API will be available at `http://localhost:8000` (interactive docs at `/docs`).
-
-### 2. Frontend
+### Start Frontend
 
 ```bash
 cd frontend
@@ -73,16 +64,27 @@ npm install
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173`.
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000
 
-### 3. (Optional) Everything with Docker
+---
+
+## 🚀 Running the Project Again
 
 ```bash
-docker compose up --build
+docker compose up -d
+docker stop researchgenie_frontend
 ```
 
-This starts PostgreSQL, the backend, and the frontend together. Make sure
-`backend/.env` exists first (see step 1).
+### Start Frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000
 
 ## Environment Variables
 
