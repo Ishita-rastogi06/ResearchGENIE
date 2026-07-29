@@ -1,23 +1,95 @@
 """AI analysis functions — summary, gaps, flashcards, quiz, mindmap, citations, compare."""
 import json
+import logging
 import re
+import time
 from langchain.schema import HumanMessage, SystemMessage
 from app.ai.llm import get_llm
 from app.ai.embeddings import search_faiss
 
+logger = logging.getLogger(__name__)
+
+
+# Groq includes a reset hint such as "Please try again in 2.3s" in 429
+# responses.  Keep this parser provider-agnostic so importing this module does
+# not require the optional ``groq`` package directly.
+_RATE_LIMIT_RETRY_ATTEMPTS = 4
+_RATE_LIMIT_BUFFER_SECONDS = 0.5
+_RATE_LIMIT_WAIT_RE = re.compile(
+    r"please\s+try\s+again\s+in\s+([0-9]+(?:\.[0-9]+)?)\s*s(?:econds?)?",
+    re.IGNORECASE,
+)
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Return True only for an HTTP 429/rate-limit exception."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 429 or str(status_code) == "429":
+        return True
+
+    # SDKs may wrap the HTTP response but retain the exception class or code.
+    class_names = {cls.__name__.lower() for cls in type(exc).__mro__}
+    if "ratelimiterror" in class_names:
+        return True
+
+    error = getattr(exc, "error", None)
+    code = getattr(error, "code", None) if error is not None else None
+    if code is None:
+        code = getattr(exc, "code", None)
+    return isinstance(code, str) and code.lower() in {
+        "rate_limit_exceeded",
+        "rate_limit_error",
+        "ratelimiterror",
+    }
+
+
+def _rate_limit_delay_seconds(exc: Exception) -> float:
+    """Use Groq's suggested wait when available, with a small safety margin."""
+    match = _RATE_LIMIT_WAIT_RE.search(str(exc))
+    if match:
+        try:
+            return max(0.0, float(match.group(1))) + _RATE_LIMIT_BUFFER_SECONDS
+        except ValueError:
+            # Defensive fallback if an SDK supplies an unusual numeric string.
+            pass
+    return 1.0 + _RATE_LIMIT_BUFFER_SECONDS
+
 
 def _llm_json(prompt: str, system: str = "", provider: str | None = None) -> str:
+    """Invoke the configured LLM, retrying only transient rate-limit responses.
+
+    Non-429 provider failures deliberately propagate to callers.  This avoids
+    treating outages, auth errors, and malformed provider responses as empty
+    quiz/flashcard output.
+    """
     llm = get_llm(provider_override=provider)
     messages = []
     if system:
         messages.append(SystemMessage(content=system))
     messages.append(HumanMessage(content=prompt))
-    resp = llm.invoke(messages)
-    return resp.content if hasattr(resp, "content") else str(resp)
+
+    for attempt in range(1, _RATE_LIMIT_RETRY_ATTEMPTS + 1):
+        try:
+            resp = llm.invoke(messages)
+            return resp.content if hasattr(resp, "content") else str(resp)
+        except Exception as exc:
+            if not _is_rate_limit_error(exc) or attempt == _RATE_LIMIT_RETRY_ATTEMPTS:
+                raise
+            delay = _rate_limit_delay_seconds(exc)
+            logger.warning(
+                "LLM rate limited; retrying in %.2fs (attempt %s/%s)",
+                delay,
+                attempt + 1,
+                _RATE_LIMIT_RETRY_ATTEMPTS,
+            )
+            time.sleep(delay)
+
+    # The loop either returns or raises; retained for type checkers.
+    raise RuntimeError("LLM invocation retry loop exited unexpectedly")
 
 
 def _get_paper_context(paper_id: int, queries: list[str], top_k: int = 3) -> str:
-    """Faster context — fewer queries, smaller top_k, capped at 12 chunks."""
+    """Fetch relevant paper chunks without duplicates."""
     all_chunks = []
     seen = set()
     for q in queries:
@@ -25,9 +97,35 @@ def _get_paper_context(paper_id: int, queries: list[str], top_k: int = 3) -> str
         for r in results:
             if r["text"] not in seen:
                 seen.add(r["text"])
-                # Truncate each chunk to 400 chars for speed
                 all_chunks.append(f"[Page {r['page']}] {r['text'][:400]}")
     return "\n\n".join(all_chunks[:12])
+
+
+def _clean_json_text(raw: str) -> str:
+    """Remove common LLM wrappers before JSON parsing."""
+    raw = str(raw or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
+
+
+def _extract_json_value(raw: str, expected_type: type) -> list | dict | None:
+    """Extract JSON even when the model adds text before or after it."""
+    cleaned = _clean_json_text(raw)
+    decoder = json.JSONDecoder()
+
+    for start_char in ("[", "{"):
+        start = cleaned.find(start_char)
+        while start != -1:
+            try:
+                value, _ = decoder.raw_decode(cleaned[start:])
+                if isinstance(value, expected_type):
+                    return value
+            except json.JSONDecodeError:
+                pass
+            start = cleaned.find(start_char, start + 1)
+
+    return None
 
 
 # ─── Summary ────────────────────────────────────────────────────────────────
@@ -57,27 +155,17 @@ Return this exact JSON (no markdown, no code blocks):
 }}"""
 
     raw = _llm_json(prompt, system="Return ONLY valid JSON with 6 string keys. No markdown fences.", provider=provider)
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```\s*", "", raw)
-    raw = raw.strip()
-    brace_idx = raw.find("{")
-    if brace_idx > 0:
-        raw = raw[brace_idx:]
+    data = _extract_json_value(raw, dict)
+    if data is None:
+        data = {
+            "abstract": _clean_json_text(raw)[:600] or "Summary not available.",
+            "contributions": "",
+            "methodology": "",
+            "results": "",
+            "limitations": "",
+            "future_work": "",
+        }
 
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        try:
-            data = json.loads(raw.strip('"').replace('\\"', '"'))
-        except Exception:
-            data = {
-                "abstract": raw[:600] if raw else "Summary not available.",
-                "contributions": "",
-                "methodology": "",
-                "results": "",
-                "limitations": "",
-                "future_work": "",
-            }
     for k in ["abstract", "contributions", "methodology", "results", "limitations", "future_work"]:
         v = data.get(k, "")
         if isinstance(v, list):
@@ -126,66 +214,108 @@ Paper content:
 
 # ─── Flashcards ─────────────────────────────────────────────────────────────
 
+def _parse_flashcards_json(raw: str) -> list[dict]:
+    cards = _extract_json_value(raw, list)
+    if not isinstance(cards, list):
+        return []
+
+    valid_cards = []
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        term = str(card.get("term", "")).strip()
+        definition = str(card.get("definition", "")).strip()
+        if term and definition:
+            valid_cards.append({"term": term, "definition": definition})
+    return valid_cards
+
+
 def generate_flashcards(paper_id: int, provider: str | None = None) -> list[dict]:
     context = _get_paper_context(
         paper_id,
         ["key terms definitions concepts methods"],
         top_k=6,
     )
-    prompt = f"""Generate 10 flashcards from this research paper.
+    if not context.strip():
+        logger.warning("No FAISS context found for flashcards: paper_id=%s", paper_id)
+        return []
+
+    prompt = f"""Generate exactly 10 flashcards from this research paper.
 
 Content:
 {context}
 
-Return JSON array ONLY:
-[{{"term": "term", "definition": "1 sentence definition"}}, ...]"""
+Return ONLY a valid JSON array. Do not use markdown or add any text before/after the array:
+[
+  {{"term": "term", "definition": "one sentence definition"}}
+]"""
 
-    raw = _llm_json(prompt, system="Return only valid JSON array.", provider=provider)
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```\s*", "", raw)
-    raw = raw.strip()
+    collected = []
+    seen_terms = set()
+    for attempt in range(3):
+        raw = _llm_json(prompt, system="Return only a valid JSON array. Never use markdown.", provider=provider)
+        cards = _parse_flashcards_json(raw)
+        logger.info("Flashcard attempt %s returned %s valid cards for paper_id=%s", attempt + 1, len(cards), paper_id)
 
-    try:
-        cards = json.loads(raw)
-        if isinstance(cards, list):
-            return [c for c in cards if "term" in c and "definition" in c]
-    except Exception:
-        pass
-    return []
+        for card in cards:
+            key = card["term"].lower()
+            if key not in seen_terms:
+                seen_terms.add(key)
+                collected.append(card)
+            if len(collected) >= 10:
+                return collected[:10]
+
+    logger.warning("Only %s flashcards generated for paper_id=%s", len(collected), paper_id)
+    return collected
 
 
 # ─── Quiz ────────────────────────────────────────────────────────────────────
 
 def _parse_quiz_json(raw: str) -> list[dict]:
-    """Best-effort parse of a JSON array of quiz questions out of raw LLM text."""
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```\s*", "", raw)
-    raw = raw.strip()
-    try:
-        questions = json.loads(raw)
-        if isinstance(questions, list):
-            # Keep only well-formed questions (defensive against partial output)
-            return [
-                q for q in questions
-                if isinstance(q, dict) and q.get("question") and isinstance(q.get("options"), list)
-            ]
-    except Exception:
-        pass
-    return []
+    """Parse a quiz JSON array even if the model adds text around the array."""
+    questions = _extract_json_value(raw, list)
+    if not isinstance(questions, list):
+        return []
+
+    valid_questions = []
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
+        question = str(q.get("question", "")).strip()
+        options = q.get("options")
+        answer = q.get("answer")
+        explanation = str(q.get("explanation", "")).strip()
+
+        if (
+            question
+            and isinstance(options, list)
+            and len(options) == 4
+            and all(str(option).strip() for option in options)
+            and isinstance(answer, int)
+            and 0 <= answer < len(options)
+        ):
+            valid_questions.append({
+                "question": question,
+                "options": [str(option).strip() for option in options],
+                "answer": answer,
+                "explanation": explanation,
+            })
+    return valid_questions
 
 
 def _generate_quiz_batch(context: str, count: int, avoid_questions: list[str], provider: str | None) -> list[dict]:
     avoid_clause = ""
     if avoid_questions:
         sample = "\n".join(f"- {q}" for q in avoid_questions[:15])
-        avoid_clause = f"\nDo NOT repeat or closely rephrase any of these already-used questions:\n{sample}\n"
+        avoid_clause = f"\nDo NOT repeat or closely rephrase these already-used questions:\n{sample}\n"
 
-    prompt = f"""Generate exactly {count} multiple choice questions about this paper.
+    prompt = f"""Generate exactly {count} multiple-choice questions about this research paper.
 {avoid_clause}
 Content:
 {context}
 
-Return JSON array ONLY, with exactly {count} items:
+Return ONLY one valid JSON array. No markdown, no explanation outside JSON.
+Every item must have exactly four options and a 0-based answer index:
 [
   {{
     "question": "question text",
@@ -193,32 +323,29 @@ Return JSON array ONLY, with exactly {count} items:
     "answer": 0,
     "explanation": "brief explanation"
   }}
-]
-"answer" = 0-based index of correct option. Return ONLY the array with exactly {count} items."""
+]"""
 
-    raw = _llm_json(prompt, system="Quiz generator. Return only valid JSON array.", provider=provider)
+    raw = _llm_json(prompt, system="Quiz generator. Return only valid JSON array; no markdown.", provider=provider)
     return _parse_quiz_json(raw)
 
 
 def _generate_quiz_guaranteed(context: str, count: int, provider: str | None, max_attempts: int = 4) -> list[dict]:
-    """Keep asking the LLM for more questions until we have `count` unique
-    ones, or we run out of attempts. This is what makes '10 questions every
-    time' actually reliable instead of depending on the model complying with
-    the prompt on the first try.
-    """
     collected: list[dict] = []
     seen_questions: set[str] = set()
 
-    for _ in range(max_attempts):
+    for attempt in range(max_attempts):
         remaining = count - len(collected)
         if remaining <= 0:
             break
+
         batch = _generate_quiz_batch(
             context,
             remaining,
             avoid_questions=[q["question"] for q in collected],
             provider=provider,
         )
+        logger.info("Quiz attempt %s returned %s valid questions", attempt + 1, len(batch))
+
         for q in batch:
             key = q["question"].strip().lower()
             if key in seen_questions:
@@ -228,6 +355,8 @@ def _generate_quiz_guaranteed(context: str, count: int, provider: str | None, ma
             if len(collected) >= count:
                 break
 
+    if len(collected) < count:
+        logger.warning("Only %s of %s quiz questions generated", len(collected), count)
     return collected[:count]
 
 
@@ -237,19 +366,25 @@ def generate_quiz(paper_id: int, provider: str | None = None) -> list[dict]:
         ["main contribution method results dataset"],
         top_k=6,
     )
+    if not context.strip():
+        logger.warning("No FAISS context found for quiz: paper_id=%s", paper_id)
+        return []
     return _generate_quiz_guaranteed(context, count=10, provider=provider)
 
 
 def generate_more_quiz(paper_id: int, existing_count: int = 10, count: int = 10, provider: str | None = None) -> list[dict]:
-    """Generate additional quiz questions, guaranteed to return `count` items
-    whenever the model is able to produce them."""
     context = _get_paper_context(
         paper_id,
         ["methodology findings conclusion background"],
         top_k=5,
     )
+    if not context.strip():
+        logger.warning("No FAISS context found for additional quiz: paper_id=%s", paper_id)
+        return []
     return _generate_quiz_guaranteed(context, count=count, provider=provider)
 
+
+# ─── Mindmap ─────────────────────────────────────────────────────────────────
 
 def generate_mindmap(paper_id: int, paper_title: str, provider: str | None = None) -> dict:
     context = _get_paper_context(
@@ -274,15 +409,10 @@ Return JSON tree ONLY:
 }}"""
 
     raw = _llm_json(prompt, system="Return only valid JSON tree.", provider=provider)
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```\s*", "", raw)
-    raw = raw.strip()
-
-    try:
-        tree = json.loads(raw)
-        return tree
-    except Exception:
-        return {"label": paper_title, "children": [{"label": "Unable to generate", "children": []}]}
+    return _extract_json_value(raw, dict) or {
+        "label": paper_title,
+        "children": [{"label": "Unable to generate", "children": []}],
+    }
 
 
 # ─── Citations ───────────────────────────────────────────────────────────────
@@ -297,14 +427,8 @@ Year: {year_display}
 
 Rules:
 - Use ONLY the fields given above. Do NOT invent a journal name, conference,
-  publisher, volume, issue, page range, or DOI — none of that was provided,
-  and guessing one would make the citation wrong.
-- If the year is "n.d.", use that placeholder consistently in the citation
-  style's normal convention for an unknown date.
-- If "Authors" contains more than one name, format them per each style's
-  rules (e.g. "Last, F. M." for APA); if you can't confidently tell where
-  one name ends and the next begins, use the string as given rather than
-  splitting it incorrectly.
+  publisher, volume, issue, page range, or DOI.
+- If the year is "n.d.", use that placeholder consistently.
 
 Return JSON ONLY:
 {{
@@ -314,16 +438,8 @@ Return JSON ONLY:
   "bibtex": "@misc{{key, title={{...}}, author={{...}}, year={{{year_display}}}}}"
 }}"""
 
-    raw = _llm_json(prompt, system="Citation formatter. Never invent bibliographic details that weren't provided. Return only valid JSON.", provider=provider)
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```\s*", "", raw)
-    raw = raw.strip()
-
-    try:
-        data = json.loads(raw)
-        return data
-    except Exception:
-        return {"apa": "", "mla": "", "ieee": "", "bibtex": ""}
+    raw = _llm_json(prompt, system="Citation formatter. Return only valid JSON.", provider=provider)
+    return _extract_json_value(raw, dict) or {"apa": "", "mla": "", "ieee": "", "bibtex": ""}
 
 
 # ─── Compare Papers ─────────────────────────────────────────────────────────
@@ -335,16 +451,8 @@ def compare_papers(
     paper_b_title: str,
     provider: str | None = None,
 ) -> dict:
-    context_a = _get_paper_context(
-        paper_a_id,
-        ["dataset model accuracy method results"],
-        top_k=4,
-    )
-    context_b = _get_paper_context(
-        paper_b_id,
-        ["dataset model accuracy method results"],
-        top_k=4,
-    )
+    context_a = _get_paper_context(paper_a_id, ["dataset model accuracy method results"], top_k=4)
+    context_b = _get_paper_context(paper_b_id, ["dataset model accuracy method results"], top_k=4)
 
     prompt = f"""Compare these two papers.
 
@@ -370,17 +478,9 @@ Return JSON ONLY:
 }}"""
 
     raw = _llm_json(prompt, system="Comparative analyst. Return only valid JSON.", provider=provider)
-    raw = re.sub(r"```json\s*", "", raw)
-    raw = re.sub(r"```\s*", "", raw)
-    raw = raw.strip()
-
-    try:
-        data = json.loads(raw)
-        return data
-    except Exception:
-        return {
-            "table": [],
-            "analysis": "Comparison could not be generated.",
-            "paper_a_verdict": None,
-            "paper_b_verdict": None,
-        }
+    return _extract_json_value(raw, dict) or {
+        "table": [],
+        "analysis": "Comparison could not be generated.",
+        "paper_a_verdict": None,
+        "paper_b_verdict": None,
+    }
