@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database import Base, engine, run_lightweight_migrations
-from app.routers import auth, papers, analysis, dashboard, notes
+from app.routers import auth, papers, analysis, dashboard, notes, chat
 
 settings = get_settings()
 
@@ -29,6 +29,7 @@ def _warm_embedding_model():
     multi-second (sometimes 10-20s on a cold cache/first download) delay
     that looks like "the AI is slow" but is actually just model loading.
     """
+
     def _load():
         try:
             from app.ai.embeddings import get_embedding_model
@@ -38,9 +39,14 @@ def _warm_embedding_model():
 
     threading.Thread(target=_load, daemon=True).start()
 
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,6 +57,7 @@ app.include_router(papers.router)
 app.include_router(analysis.router)
 app.include_router(dashboard.router)
 app.include_router(notes.router)
+app.include_router(chat.router)
 
 
 @app.get("/")
