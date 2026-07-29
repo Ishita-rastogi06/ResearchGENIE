@@ -9,13 +9,14 @@ const CHECK = () => (
 export default function Hero() {
   return (
     <section style={{
-      backgroundColor: "#FAFAF8",
-      height: "calc(100vh - 68px)",
-      display: "flex",
-      alignItems: "center",
-      position: "relative",
-      overflow: "hidden",
-    }}>
+  backgroundColor: "#FAFAF8",
+  height: "calc(100vh - 68px)",
+  display: "flex",
+  alignItems: "center",
+  transform: "translateY(-35px)",
+  position: "relative",
+  overflow: "hidden",
+}}>
       {/* Subtle gradient orbs */}
       <div style={{
         position: "absolute", top: "-100px", left: "-100px",

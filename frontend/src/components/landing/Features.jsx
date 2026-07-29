@@ -39,6 +39,11 @@ const features = [
     desc: "One-click generation of APA, MLA, IEEE and BibTeX citations formatted perfectly and ready to copy.",
     accent: "var(--primary)",
   },
+  {
+  icon: "💬", title: "Ask Your Paper",
+  desc: "Chat with your uploaded research paper and get clear, citation-backed answers with exact page references.",
+  accent: "#D4943A",
+  },
 ];
 
 export default function Features() {
@@ -92,7 +97,7 @@ export default function Features() {
             <div
               key={i}
               style={{
-                backgroundColor: "#FAFAF8",
+                background: "linear-gradient(135deg, #F7F7F6 0%, #EDE2D2 100%)",
                 border: "1px solid #E5E7EB",
                 borderRadius: "16px",
                 padding: "28px",
