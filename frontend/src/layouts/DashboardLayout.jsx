@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -187,9 +187,20 @@ export default function DashboardLayout({ children, fullHeight = false }) {
         .slice(0, 2)
     : "U";
 
-  useEffect(() => {
-    mainRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [location.pathname]);
+  useLayoutEffect(() => {
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    mainRef.current?.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+  });
+}, [location.pathname, location.search]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
