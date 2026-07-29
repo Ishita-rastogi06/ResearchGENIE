@@ -400,13 +400,13 @@ export default function Settings() {
   return (
     <DashboardLayout>
       {/* Page header */}
-      <div style={{ ...contentStyle, marginBottom: "36px" }}>
+      <div style={{ ...contentStyle, marginTop: "-10px", marginBottom: "20px" }}>
         <h1 style={{ fontSize: "32px", fontWeight: 900, color: "#1A2420", letterSpacing: "-1px", margin: "0 0 6px 0" }}>Settings</h1>
         <p style={{ fontSize: "16px", color: "#9CA3AF", margin: 0 }}>Manage your account, security and AI preferences.</p>
       </div>
 
       {/* Tab bar */}
-      <div style={{ ...contentStyle, display: "flex", alignItems: "center", justifyContent: "stretch", gap: "6px", backgroundColor: "#FFFFFF", border: "1px solid #E5E2D8", borderRadius: "16px", padding: "6px", marginBottom: "42px", boxSizing: "border-box", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+      <div style={{ ...contentStyle, display: "flex", alignItems: "center", justifyContent: "stretch", gap: "6px", backgroundColor: "#FFFFFF", border: "1px solid #E5E2D8", borderRadius: "16px", padding: "6px", marginBottom: "24px", boxSizing: "border-box", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
         {TABS.map(t => {
           const on = tab === t.id;
           return (
@@ -445,4 +445,3 @@ export default function Settings() {
     </DashboardLayout>
   );
 }
-
