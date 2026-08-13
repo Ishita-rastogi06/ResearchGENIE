@@ -21,7 +21,7 @@ Upload any research paper and instantly get an AI-generated summary, identified 
 
 Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline — a **FAISS vector index** built from the paper itself — so answers are retrieved from, and grounded in, the actual document.
 
-
+---
 
 ## 🚀 Features
 
@@ -36,7 +36,7 @@ Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline 
 | 🔎 **Semantic Search** | Vector-similarity search within a single paper |
 | ⚖️ **Compare** | Side-by-side AI comparison of two papers |
 
-
+---
 
 ## 🏗️ Tech Stack
 
@@ -55,7 +55,7 @@ Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline 
 - sentence-transformers embeddings
 - FAISS vector store
 
-
+---
 
 ## 📁 Project Structure
 
@@ -76,12 +76,16 @@ ResearchGenie/
 └── docker-compose.yml
 ```
 
+---
+
 ## 🔧 Prerequisites
 
 - Python 3.11+
 - Node.js 18+
 - PostgreSQL 14+ (or use the provided `docker-compose.yml`)
 - A free [Groq API key](https://console.groq.com)
+
+---
 
 ## ⚡ Getting Started
 
@@ -117,6 +121,8 @@ cd frontend
 npm run dev
 ```
 
+---
+
 ## 🔐 Environment Variables
 
 Full list in [`backend/.env.example`](backend/.env.example). At minimum:
@@ -128,12 +134,14 @@ Full list in [`backend/.env.example`](backend/.env.example). At minimum:
 | `GROQ_API_KEY` | API key from [console.groq.com](https://console.groq.com) |
 | `FRONTEND_URL` | Frontend origin, for CORS (default `http://localhost:5173`) |
 
+---
+
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome. Feel free to check the [issues page](../../issues).
 
-
 ---
+
 
 <div align="center">
 Built with ❤️ by Ishita
