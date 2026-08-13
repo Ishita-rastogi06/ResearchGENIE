@@ -17,6 +17,7 @@ Upload any research paper and instantly get an AI-generated summary, identified 
 
 Every feature is backed by a **FAISS vector index** built from the paper itself, so answers are retrieved from — and cited to — the actual document.
 
+
 ## 🚀 Features
 
 | Feature | Description |
@@ -29,6 +30,7 @@ Every feature is backed by a **FAISS vector index** built from the paper itself,
 | 📎 **Citations** | Instantly generate formatted citations |
 | 🔎 **Semantic Search** | Vector-similarity search within a single paper |
 | ⚖️ **Compare** | Side-by-side AI comparison of two papers |
+
 
 ## 🏗️ Tech Stack
 
@@ -118,11 +120,6 @@ Full list in [`backend/.env.example`](backend/.env.example). At minimum:
 | `GROQ_API_KEY` | API key from [console.groq.com](https://console.groq.com) |
 | `FRONTEND_URL` | Frontend origin, for CORS (default `http://localhost:5173`) |
 
-## 🗺️ Roadmap
-
-- [ ] Multi-user collaborative notes
-- [ ] Export flashcards/quizzes to Anki
-- [ ] Support for additional file formats (DOCX, HTML)
 
 ## 🤝 Contributing
 
