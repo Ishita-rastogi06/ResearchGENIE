@@ -6,6 +6,10 @@
 
 Upload any research paper and instantly get an AI-generated summary, identified research gaps, flashcards, quizzes, mind maps, citations, semantic search, and side-by-side paper comparison — all grounded in the actual document through a FAISS vector index.
 
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![LangChain](https://img.shields.io/badge/LangChain-Groq%20LLaMA%203.3-1C3C3C)](https://www.langchain.com/)
 
 </div>
 
@@ -15,7 +19,7 @@ Upload any research paper and instantly get an AI-generated summary, identified 
 
 **ResearchGenie** turns dense academic PDFs into something you can actually study from. Instead of skimming a 20-page paper cold, you get an AI layer on top of it — a summary broken into the sections that matter, the gaps the authors didn't address, auto-generated flashcards and quizzes to test your understanding, a visual mind map of the paper's structure, and semantic search so you can ask "what did they say about X" and get an answer grounded in the real text, not a hallucination.
 
-Every feature is backed by a **FAISS vector index** built from the paper itself, so answers are retrieved from — and cited to — the actual document.
+Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline — a **FAISS vector index** built from the paper itself — so answers are retrieved from, and grounded in, the actual document.
 
 
 ## 🚀 Features
@@ -44,10 +48,11 @@ Every feature is backed by a **FAISS vector index** built from the paper itself,
 - SQLAlchemy
 - PostgreSQL
 
-**AI / Retrieval**
+**AI / Retrieval (RAG)**
 - LangChain + Groq (LLaMA 3.3)
 - sentence-transformers embeddings
 - FAISS vector store
+
 
 ## 📁 Project Structure
 
@@ -120,14 +125,10 @@ Full list in [`backend/.env.example`](backend/.env.example). At minimum:
 | `GROQ_API_KEY` | API key from [console.groq.com](https://console.groq.com) |
 | `FRONTEND_URL` | Frontend origin, for CORS (default `http://localhost:5173`) |
 
-
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome. Feel free to check the [issues page](../../issues).
 
-## 📄 License
-
-This project is licensed under the MIT License.
 
 ---
 
