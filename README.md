@@ -22,6 +22,7 @@ Upload any research paper and instantly get an AI-generated summary, identified 
 Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline — a **FAISS vector index** built from the paper itself — so answers are retrieved from, and grounded in, the actual document.
 
 
+
 ## 🚀 Features
 
 | Feature | Description |
@@ -34,6 +35,7 @@ Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline 
 | 📎 **Citations** | Instantly generate formatted citations |
 | 🔎 **Semantic Search** | Vector-similarity search within a single paper |
 | ⚖️ **Compare** | Side-by-side AI comparison of two papers |
+
 
 
 ## 🏗️ Tech Stack
@@ -52,6 +54,7 @@ Every feature is powered by a **Retrieval-Augmented Generation (RAG)** pipeline 
 - LangChain + Groq (LLaMA 3.3)
 - sentence-transformers embeddings
 - FAISS vector store
+
 
 
 ## 📁 Project Structure
